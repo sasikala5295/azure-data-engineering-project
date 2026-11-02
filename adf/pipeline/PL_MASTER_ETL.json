@@ -1,0 +1,201 @@
+{
+	"name": "PL_MASTER_ETL",
+	"properties": {
+		"activities": [
+			{
+				"name": "Lookup_StartRunLog",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlServerSource",
+						"sqlReaderQuery": {
+							"value": "@concat(\n 'EXEC dbo.usp_StartPipelineLog ',\n '@PipelineName=''PL_Master_ETL'', ',\n '@PipelineRunID=''', pipeline().RunId, ''', ',\n '@TriggerName=''', coalesce(pipeline().TriggerName,'Manual'), ''', ',\n '@TriggerType=''', pipeline().TriggerType, ''', ',\n '@TriggerTime=''', pipeline().TriggerTime, ''', ',\n '@RunRequestedBy=''', pipeline().parameters.p_RunRequestedBy, ''';'\n)\n",
+							"type": "Expression"
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "DS_SQL_CONTROL",
+						"type": "DatasetReference"
+					}
+				}
+			},
+			{
+				"name": "Execute_LoadTables",
+				"type": "ExecutePipeline",
+				"dependsOn": [
+					{
+						"activity": "Lookup_StartRunLog",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"pipeline": {
+						"referenceName": "PL_LoadTables",
+						"type": "PipelineReference"
+					},
+					"waitOnCompletion": true,
+					"parameters": {
+						"p_RunLogID": {
+							"value": "@activity('Lookup_StartRunLog').output.firstRow.RunLogID",
+							"type": "Expression"
+						}
+					}
+				}
+			},
+			{
+				"name": "SP_EndRun_Success",
+				"type": "SqlServerStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Execute_LoadTables",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"storedProcedureName": "[dbo].[usp_EndPipelineLog]",
+					"storedProcedureParameters": {
+						"ErrorMessage": {
+							"value": "",
+							"type": "String"
+						},
+						"RowsCopied": {
+							"value": "",
+							"type": "Int64"
+						},
+						"RunLogID": {
+							"value": {
+								"value": "@int(activity('Lookup_StartRunLog').output.firstRow.RunLogID)",
+								"type": "Expression"
+							},
+							"type": "Int64"
+						},
+						"RunStatus": {
+							"value": {
+								"value": "Succeeded",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				},
+				"linkedServiceName": {
+					"referenceName": "LS_onprem_sql",
+					"type": "LinkedServiceReference"
+				}
+			},
+			{
+				"name": "SP_EndRun_Failed",
+				"type": "SqlServerStoredProcedure",
+				"dependsOn": [
+					{
+						"activity": "Execute_LoadTables",
+						"dependencyConditions": [
+							"Failed"
+						]
+					}
+				],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"storedProcedureName": "[dbo].[usp_EndPipelineLog]",
+					"storedProcedureParameters": {
+						"ErrorMessage": {
+							"value": {
+								"value": "@string(activity('Execute_LoadTables').error.message)",
+								"type": "Expression"
+							},
+							"type": "String"
+						},
+						"RowsCopied": {
+							"value": "",
+							"type": "Int64"
+						},
+						"RunLogID": {
+							"value": {
+								"value": "@activity('Lookup_StartRunLog').output.firstRow.RunLogID",
+								"type": "Expression"
+							},
+							"type": "Int64"
+						},
+						"RunStatus": {
+							"value": {
+								"value": "Failed",
+								"type": "Expression"
+							},
+							"type": "String"
+						}
+					}
+				},
+				"linkedServiceName": {
+					"referenceName": "LS_onprem_sql",
+					"type": "LinkedServiceReference"
+				}
+			},
+			{
+				"name": "Fail_Master_Pipeline",
+				"type": "Fail",
+				"dependsOn": [
+					{
+						"activity": "SP_EndRun_Failed",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"message": {
+						"value": "@string(activity('Execute_LoadTables').error.message)",
+						"type": "Expression"
+					},
+					"errorCode": {
+						"value": "CHILD_PIPELINE_FAILED",
+						"type": "Expression"
+					}
+				}
+			}
+		],
+		"parameters": {
+			"p_RunRequestedBy": {
+				"type": "string",
+				"defaultValue": "sasi"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2026-11-02T16:14:18Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}

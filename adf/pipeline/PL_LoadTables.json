@@ -1,0 +1,571 @@
+{
+	"name": "PL_LoadTables",
+	"properties": {
+		"activities": [
+			{
+				"name": "Lookup_Control",
+				"type": "Lookup",
+				"dependsOn": [],
+				"policy": {
+					"timeout": "0.12:00:00",
+					"retry": 0,
+					"retryIntervalInSeconds": 30,
+					"secureOutput": false,
+					"secureInput": false
+				},
+				"userProperties": [],
+				"typeProperties": {
+					"source": {
+						"type": "SqlServerSource",
+						"sqlReaderQuery": {
+							"value": "SELECT *\nFROM dbo.ETL_Control_Table\nWHERE IsActive = 1;\n",
+							"type": "Expression"
+						},
+						"queryTimeout": "02:00:00",
+						"partitionOption": "None"
+					},
+					"dataset": {
+						"referenceName": "DS_SQL_CONTROL",
+						"type": "DatasetReference"
+					},
+					"firstRowOnly": false
+				}
+			},
+			{
+				"name": "ForEach1",
+				"type": "ForEach",
+				"dependsOn": [
+					{
+						"activity": "Lookup_Control",
+						"dependencyConditions": [
+							"Succeeded"
+						]
+					}
+				],
+				"userProperties": [],
+				"typeProperties": {
+					"items": {
+						"value": "@activity('Lookup_Control').output.value\n",
+						"type": "Expression"
+					},
+					"batchCount": 1,
+					"activities": [
+						{
+							"name": "Lookup_StartTableLog",
+							"type": "Lookup",
+							"dependsOn": [],
+							"policy": {
+								"timeout": "0.12:00:00",
+								"retry": 0,
+								"retryIntervalInSeconds": 30,
+								"secureOutput": false,
+								"secureInput": false
+							},
+							"userProperties": [],
+							"typeProperties": {
+								"source": {
+									"type": "SqlServerSource",
+									"sqlReaderQuery": {
+										"value": "@concat(\n    'EXEC dbo.usp_StartTableLog ',\n    '@RunLogID=', string(pipeline().parameters.p_RunLogID), ', ',\n    '@SourceTable=''', item().SourceSchema, '.', item().SourceTable, ''', ',\n    '@LoadType=''', item().LoadType, ''';'\n)\n\n",
+										"type": "Expression"
+									},
+									"queryTimeout": "02:00:00",
+									"partitionOption": "None"
+								},
+								"dataset": {
+									"referenceName": "DS_SQL_Source",
+									"type": "DatasetReference",
+									"parameters": {
+										"p_TableName": {
+											"value": "@item().SourceTable",
+											"type": "Expression"
+										},
+										"p_SchemaName": {
+											"value": "@item().SourceSchema",
+											"type": "Expression"
+										}
+									}
+								}
+							}
+						},
+						{
+							"name": "If_LoadType",
+							"type": "IfCondition",
+							"dependsOn": [
+								{
+									"activity": "Lookup_StartTableLog",
+									"dependencyConditions": [
+										"Succeeded"
+									]
+								}
+							],
+							"userProperties": [],
+							"typeProperties": {
+								"expression": {
+									"value": "@equals(item().LoadType, 'Incremental')",
+									"type": "Expression"
+								},
+								"ifFalseActivities": [
+									{
+										"name": "Copy_full",
+										"type": "Copy",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"source": {
+												"type": "SqlServerSource",
+												"sqlReaderQuery": {
+													"value": "@concat(\n    'SELECT * FROM ',\n    item().SourceSchema, '.', item().SourceTable\n  )\n",
+													"type": "Expression"
+												},
+												"queryTimeout": "02:00:00",
+												"partitionOption": "None"
+											},
+											"sink": {
+												"type": "ParquetSink",
+												"storeSettings": {
+													"type": "AzureBlobFSWriteSettings"
+												},
+												"formatSettings": {
+													"type": "ParquetWriteSettings"
+												}
+											},
+											"enableStaging": false,
+											"translator": {
+												"type": "TabularTranslator",
+												"typeConversion": true,
+												"typeConversionSettings": {
+													"allowDataTruncation": true,
+													"treatBooleanAsNumber": false
+												}
+											}
+										},
+										"inputs": [
+											{
+												"referenceName": "DS_SQL_Source",
+												"type": "DatasetReference",
+												"parameters": {
+													"p_TableName": {
+														"value": "@item().SourceTable",
+														"type": "Expression"
+													},
+													"p_SchemaName": {
+														"value": "@item().SourceSchema",
+														"type": "Expression"
+													}
+												}
+											}
+										],
+										"outputs": [
+											{
+												"referenceName": "DS_ADLS_Parquet",
+												"type": "DatasetReference",
+												"parameters": {
+													"p_TableName": {
+														"value": "@item().SourceTable",
+														"type": "Expression"
+													},
+													"p_LoadDate": {
+														"value": "@formatDateTime(utcNow(),'yyyy-MM-dd')",
+														"type": "Expression"
+													},
+													"p_FileName": {
+														"value": "@concat(item().SourceTable,'.parquet')",
+														"type": "Expression"
+													}
+												}
+											}
+										]
+									},
+									{
+										"name": "SP_EndTable_Success_2",
+										"type": "SqlServerStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "Copy_full",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"storedProcedureName": "[dbo].[usp_EndTableLog]",
+											"storedProcedureParameters": {
+												"ErrorMessage": {
+													"value": "",
+													"type": "String"
+												},
+												"LoadStatus": {
+													"value": {
+														"value": "Succeeded",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"RowsCopied": {
+													"value": {
+														"value": "@activity('copy_full').output.rowsCopied",
+														"type": "Expression"
+													},
+													"type": "Int64"
+												},
+												"TableLogID": {
+													"value": {
+														"value": "@activity('Lookup_StartTableLog').output.firstRow.TableLogID",
+														"type": "Expression"
+													},
+													"type": "Int64"
+												}
+											}
+										},
+										"linkedServiceName": {
+											"referenceName": "LS_onprem_sql",
+											"type": "LinkedServiceReference"
+										}
+									},
+									{
+										"name": "SP_EndTable_Failed_2",
+										"type": "SqlServerStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "Copy_full",
+												"dependencyConditions": [
+													"Failed"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"storedProcedureName": "[dbo].[usp_EndTableLog]",
+											"storedProcedureParameters": {
+												"ErrorMessage": {
+													"value": "",
+													"type": "String"
+												},
+												"LoadStatus": {
+													"value": "Failed",
+													"type": "String"
+												},
+												"RowsCopied": {
+													"value": {
+														"value": "@activity('copy_full').output.rowsCopied",
+														"type": "Expression"
+													},
+													"type": "Int64"
+												},
+												"TableLogID": {
+													"value": {
+														"value": "@activity('Lookup_StartTableLog').output.firstRow.TableLogID",
+														"type": "Expression"
+													},
+													"type": "Int64"
+												}
+											}
+										},
+										"linkedServiceName": {
+											"referenceName": "LS_onprem_sql",
+											"type": "LinkedServiceReference"
+										}
+									}
+								],
+								"ifTrueActivities": [
+									{
+										"name": "Lookup_GetUpperWatermark",
+										"type": "Lookup",
+										"dependsOn": [],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"source": {
+												"type": "SqlServerSource",
+												"sqlReaderQuery": {
+													"value": "@concat(\n    'SELECT CONVERT(varchar(33), MAX(',\n    item().WatermarkColumn,\n    '), 126) AS UpperWatermark FROM ',\n    item().SourceSchema, '.', item().SourceTable\n)",
+													"type": "Expression"
+												},
+												"queryTimeout": "02:00:00",
+												"partitionOption": "None"
+											},
+											"dataset": {
+												"referenceName": "DS_SQL_CONTROL",
+												"type": "DatasetReference"
+											}
+										}
+									},
+									{
+										"name": "copy_source_to_adls",
+										"type": "Copy",
+										"dependsOn": [
+											{
+												"activity": "Lookup_GetUpperWatermark",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"source": {
+												"type": "SqlServerSource",
+												"sqlReaderQuery": {
+													"value": "@concat(\n    'SELECT * FROM ',\n    item().SourceSchema, '.', item().SourceTable,\n    ' WHERE ', item().WatermarkColumn,\n    ' > ''', item().LastWatermarkValue,\n    ''' AND ', item().WatermarkColumn,\n    ' <= ''',\n    activity('Lookup_GetUpperWatermark').output.firstRow.UpperWatermark,\n    ''''\n)",
+													"type": "Expression"
+												},
+												"queryTimeout": "02:00:00",
+												"partitionOption": "None"
+											},
+											"sink": {
+												"type": "ParquetSink",
+												"storeSettings": {
+													"type": "AzureBlobFSWriteSettings"
+												},
+												"formatSettings": {
+													"type": "ParquetWriteSettings"
+												}
+											},
+											"enableStaging": false,
+											"translator": {
+												"type": "TabularTranslator",
+												"typeConversion": true,
+												"typeConversionSettings": {
+													"allowDataTruncation": true,
+													"treatBooleanAsNumber": false
+												}
+											}
+										},
+										"inputs": [
+											{
+												"referenceName": "DS_SQL_Source",
+												"type": "DatasetReference",
+												"parameters": {
+													"p_TableName": {
+														"value": "@item().SourceTable",
+														"type": "Expression"
+													},
+													"p_SchemaName": {
+														"value": "@item().SourceSchema",
+														"type": "Expression"
+													}
+												}
+											}
+										],
+										"outputs": [
+											{
+												"referenceName": "DS_ADLS_Parquet",
+												"type": "DatasetReference",
+												"parameters": {
+													"p_TableName": {
+														"value": "@item().TargetFolder",
+														"type": "Expression"
+													},
+													"p_LoadDate": {
+														"value": "@formatDateTime(utcNow(),'yyyy-MM-dd')",
+														"type": "Expression"
+													},
+													"p_FileName": {
+														"value": "@concat(item().SourceTable,'.parquet')",
+														"type": "Expression"
+													}
+												}
+											}
+										]
+									},
+									{
+										"name": "SP_UpdateWatermark",
+										"type": "SqlServerStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "copy_source_to_adls",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"storedProcedureName": "[dbo].[usp_UpdateWatermark]",
+											"storedProcedureParameters": {
+												"NewWatermarkValue": {
+													"value": {
+														"value": "@activity('Lookup_GetUpperWatermark').output.firstRow.UpperWatermark",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"TableID": {
+													"value": {
+														"value": "@int(item().TableID)",
+														"type": "Expression"
+													},
+													"type": "Int32"
+												}
+											}
+										},
+										"linkedServiceName": {
+											"referenceName": "LS_onprem_sql",
+											"type": "LinkedServiceReference"
+										}
+									},
+									{
+										"name": "SP_EndTable_Success_1",
+										"type": "SqlServerStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "SP_UpdateWatermark",
+												"dependencyConditions": [
+													"Succeeded"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"storedProcedureName": "[dbo].[usp_EndTableLog]",
+											"storedProcedureParameters": {
+												"ErrorMessage": {
+													"value": "",
+													"type": "String"
+												},
+												"LoadStatus": {
+													"value": {
+														"value": "Succeeded",
+														"type": "Expression"
+													},
+													"type": "String"
+												},
+												"RowsCopied": {
+													"value": {
+														"value": "@activity('copy_source_to_adls').output.rowsCopied",
+														"type": "Expression"
+													},
+													"type": "Int64"
+												},
+												"TableLogID": {
+													"value": {
+														"value": "@activity('Lookup_StartTableLog').output.firstRow.TableLogID",
+														"type": "Expression"
+													},
+													"type": "Int64"
+												}
+											}
+										},
+										"linkedServiceName": {
+											"referenceName": "LS_onprem_sql",
+											"type": "LinkedServiceReference"
+										}
+									},
+									{
+										"name": "SP_EndTable_Failed_1",
+										"type": "SqlServerStoredProcedure",
+										"dependsOn": [
+											{
+												"activity": "SP_UpdateWatermark",
+												"dependencyConditions": [
+													"Failed"
+												]
+											}
+										],
+										"policy": {
+											"timeout": "0.12:00:00",
+											"retry": 0,
+											"retryIntervalInSeconds": 30,
+											"secureOutput": false,
+											"secureInput": false
+										},
+										"userProperties": [],
+										"typeProperties": {
+											"storedProcedureName": "[dbo].[usp_EndTableLog]",
+											"storedProcedureParameters": {
+												"ErrorMessage": {
+													"value": "",
+													"type": "String"
+												},
+												"LoadStatus": {
+													"value": "Failed",
+													"type": "String"
+												},
+												"RowsCopied": {
+													"value": {
+														"value": "@activity('copy_source_to_adls').output.rowsCopied",
+														"type": "Expression"
+													},
+													"type": "Int64"
+												},
+												"TableLogID": {
+													"value": {
+														"value": "@activity('Lookup_StartTableLog').output.firstRow.TableLogID",
+														"type": "Expression"
+													},
+													"type": "Int64"
+												}
+											}
+										},
+										"linkedServiceName": {
+											"referenceName": "LS_onprem_sql",
+											"type": "LinkedServiceReference"
+										}
+									}
+								]
+							}
+						}
+					]
+				}
+			}
+		],
+		"parameters": {
+			"p_RunLogID": {
+				"type": "string"
+			}
+		},
+		"annotations": [],
+		"lastPublishTime": "2026-11-02T16:01:08Z"
+	},
+	"type": "Microsoft.DataFactory/factories/pipelines"
+}

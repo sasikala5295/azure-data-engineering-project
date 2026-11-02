@@ -1,0 +1,15 @@
+{
+	"name": "adf-sales-dev-india-central-004",
+	"properties": {
+		"trustModeClaimForMi": {
+			"value": "Disabled",
+			"editable": true
+		}
+	},
+	"location": "centralindia",
+	"identity": {
+		"type": "SystemAssigned",
+		"principalId": "7dd82bef-f1b5-4d07-a619-1f7632fe641d",
+		"tenantId": "b03eeb6a-bc3c-4659-ba10-3c9121ea465f"
+	}
+}

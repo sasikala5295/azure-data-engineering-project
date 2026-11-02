@@ -1,0 +1,36 @@
+{
+	"name": "TR_Daily_ETL",
+	"properties": {
+		"annotations": [],
+		"runtimeState": "Stopped",
+		"pipelines": [
+			{
+				"pipelineReference": {
+					"referenceName": "PL_LoadTables",
+					"type": "PipelineReference"
+				},
+				"parameters": {
+					"p_RunLogID": "@activity('Lookup_StartRunLog').output.firstRow.RunLogID"
+				}
+			},
+			{
+				"pipelineReference": {
+					"referenceName": "PL_MASTER_ETL",
+					"type": "PipelineReference"
+				},
+				"parameters": {
+					"p_RunRequestedBy": "sasi"
+				}
+			}
+		],
+		"type": "ScheduleTrigger",
+		"typeProperties": {
+			"recurrence": {
+				"frequency": "Day",
+				"interval": 1,
+				"startTime": "2026-11-02T13:54:00",
+				"timeZone": "India Standard Time"
+			}
+		}
+	}
+}
