@@ -8,7 +8,7 @@ The solution uses metadata-driven pipeline orchestration, incremental loading, w
 
 ## 2. Architecture Diagram
 
-![Azure Data Factory to ADLS Gen2 Architecture](Architecture_Diagram.png)
+
 
 ## 3. Architecture Components
 
