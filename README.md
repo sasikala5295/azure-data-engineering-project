@@ -16,7 +16,6 @@ Azure SQL Database is used for metadata management and ETL logging.
 
 - Azure Data Factory
 - Azure Data Lake Storage Gen2
-- Azure SQL Database
 - SQL Server
 - Self-Hosted Integration Runtime
 - GitHub
