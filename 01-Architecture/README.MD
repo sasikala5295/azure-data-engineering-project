@@ -19,7 +19,6 @@ The solution uses metadata-driven pipeline orchestration, incremental loading, w
 | Azure Data Factory | Orchestrates and manages data ingestion pipelines |
 | Master Pipeline | Initiates execution and reads active tables from the control table |
 | Child Pipeline | Executes table-level ingestion using reusable activities |
-| Azure SQL Database | Stores ETL control metadata and execution logs |
 | Control Table | Maintains source table details, load type and watermark information |
 | Stored Procedures | Manage pipeline-level and table-level execution logs |
 | ADLS Gen2 | Stores ingested data in the Raw/Bronze layer |
