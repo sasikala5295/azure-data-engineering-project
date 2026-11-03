@@ -1,0 +1,13 @@
+CREATE TABLE dbo.ETL_Table_Log
+(
+    TableLogID BIGINT IDENTITY(1,1) PRIMARY KEY,
+    RunLogID BIGINT NOT NULL,
+    SourceTable VARCHAR(200),
+    LoadType VARCHAR(20),
+    StartTime DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    EndTime DATETIME2 NULL,
+    LoadStatus VARCHAR(30) NOT NULL,
+    RowsCopied BIGINT NULL,
+    ErrorMessage NVARCHAR(MAX) NULL
+);
+GO

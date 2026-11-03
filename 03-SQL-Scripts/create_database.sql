@@ -1,0 +1,5 @@
+CREATE DATABASE AzureETLProject;
+GO
+
+USE AzureETLProject;
+GO
